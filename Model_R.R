@@ -7,70 +7,131 @@
 # Liliana Perez, Yenny Cuellar, Jorge Gibbons, Elias Pinilla Matamala, 
 # Simon Demers, Juan Capella
 
+
 #setting libraries
 library(raster)
-library(rgdal)
 library(sf)
-install.packages("rsample")##for splitting observations data
-library(rsample)
-library(randomForest) ## Random Forestm method
-library(glue)## to Generalized Linear Model (GLM)
-install.packages("Rtools")
-install.packages("caret")
-install.packages("recipes")
-library(recipes)
-library(hardhat)
-library(caret)##  TO GLM
-library(maxnet)  ## TO Maxent algorithm
-library(glmnet)
-library(dismo)
+library(randomForest) 
 library(tibble)
-install.packages("nnet")
+library(dismo)
+library(ModelMetrics)
 library(nnet)
-#####
+library(caret)
+
 #reading data
 bathymetry=raster("bathymetry.tif")
 fish_farming=raster("fish_farming.tif")
 kelp=raster("kelp.tif")
 oxygen_dissolved=raster("oxygen_dissolved.tif")
-salinity=raster("salinity.tif")
+salinity=raster("Salinity.tif")
 silice=raster("silice.tif")
 temp_seafloor=raster("temperature_seafloor.tif")
 obs_csv=read.csv("observations.csv", sep = ";")
+rios=raster("rios_distance.tif")
+dist_coast=raster("distance_shoreline.tif")
+turbidity=raster("turb_final.tif")
 ## shp study area
 pol=read_sf("polygonSkyring.shp")
 coordinates(obs_csv)= ~ x + y ## TO SET x and y as coordinates
 #Assembling all predictor variable values into one RasterBrick
-data=stack(bathymetry,fish_farming,kelp,oxygen_dissolved,salinity,silice,temp_seafloor)
+datall=stack(bathymetry,fish_farming,kelp,oxygen_dissolved,salinity,silice,temp_seafloor,rios, turbidity,dist_coast)
+#print(names(datall))
+names(datall)[1] <- "bathymetry"
+names(datall)[2] <- "Fish farms"
+names(datall)[5] <- "salinity"
+names(datall)[8] <- "rios"
+names(datall)[9] <- "turbidity"
+names(datall)[10] <- "dist_coast"
 #extract raster value by points
-rasvalue=extract(data,obs_csv)
-combinePointValue=cbind(obs_csv,rasvalue)
-all_data=as.data.frame(combinePointValue)
-drops <- c("?..FID","Shape..","POINTID","y","x") #taking fields to delete
+#all variables
+rasvalueall=extract(datall,obs_csv)
+
+combinePointValueall=cbind(obs_csv,rasvalueall)
+all_data=as.data.frame(combinePointValueall)
+drops <- c("FID","Shape..","POINTID","y","x") #taking fields to delete
 all_data2=all_data[ , !(names(all_data) %in% drops)] #to obtain just the fields of interest
 
-########### Create training (70%) and test (30%) dataset ##############
-set.seed(3)
-data_split=initial_split(all_data2,prop = 0.7)
-train=training(data_split) ## 70%
-test=testing(data_split)  ## 30%
+
+
+
+################################### Random Forest###############################
+set.seed(5)
+tuneRF(x=all_data2[,2:11],y=all_data2$Presence)
 
 presence=subset(all_data2,Presence==1)
 absence=subset(all_data2,Presence==0)
 
-#set number of folds to use
+rf_all <- randomForest(as.factor(Presence) ~.,mtry=6,ntree=5000, data=all_data2)
+rf_all$importance
 
+sorted_importance <- sort(rf_all$importance, decreasing = TRUE)
+sorted_importance
+#set number of folds to use
 folds=5
 
-#partiction presence and absence data according to folds using the kfold() function.
+#partition presence and absence data according to folds using the kfold() function.
 
 kfold_pres <- kfold(presence, folds)
 kfold_back <- kfold(absence, folds)
 
-######################################## 1 - GLM ###############################
+#create an empty list to hold our results (remember there will be five sets)
 
-#create an empty list to hold our results
+eRF<-list()
+eRFtr<-list()
+par(mfrow=c(3,3))
+
+for (i in 1:folds) {
+  train_rf <- presence[kfold_pres!= i,]
+  test_rf <- presence[kfold_pres == i,]
+  backTrain_rf<-absence[kfold_back!=i,]
+  backTest<-absence[kfold_back==i,]
+  dataTrain_rf<-rbind(train_rf,backTrain_rf)
+  dataTest_rf<-rbind(test_rf,backTest)
+  RF_eval <- randomForest(formula=Presence~.,mtry=6,ntree=5000, data=dataTrain_rf,importance=TRUE)#this is our RF model
+  rf.predall <- predict(RF_eval,dataTest_rf)#make prediction
+  
+  eRF[[i]]<-evaluate(dataTest_rf[dataTest_rf$Presence=="1",],
+                     dataTest_rf[dataTest_rf$Presence=="0",],RF_eval )#validation test-AUC:
+  eRFtr[[i]]<-evaluate(dataTrain_rf[dataTrain_rf$Presence=="1",],
+                       dataTrain_rf[dataTrain_rf$Presence=="0",],RF_eval )
+  }
+
+#AUC
+aucrftest <- sapply( eRF, function(x){slot(x, 'auc')} )
+mean(aucrftest)
+aucrftr <- sapply( eRFtr, function(x){slot(x, 'auc')} )
+mean(aucrftr)
+
+#Get maxTPR+TNR
+
+Opt_RF<-sapply( eRFtr, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
+
+Mean_OptRF<-mean(Opt_RF)
+
+# calculate RMSE  when is treated as REGRESSION
+
+y=dataTest_rf$Presence
+rmse_rf=rmse(y,rf.predall)
+
+varImpPlot(RF_eval)
+
+#Predict
+pr_all <- predict(datall, RF_eval,type="response")
+
+##PLOT
+par(mfrow=c(1,2))
+plot(pr_all, main='Random Forest regression')
+plot(pol, col="transparent",add=TRUE, border='dark grey')
+tr_all <- threshold(eRF[[3]], 'spec_sens') 
+
+plot(pr_all > 0.51868, main='presence/absence') 
+plot(pol, col="transparent",add=TRUE, border='dark grey')
+
+#############  Generalized Linear Model ######################################
+
+#create an empty list to hold our results (remember there will be five sets)
 eGLM<-list()
+eGLMtr<-list()
 par(mfrow=c(2,3))
 
 for (i in 1:folds) {
@@ -80,8 +141,9 @@ for (i in 1:folds) {
   backTest_glm<-absence[kfold_back==i,]
   dataTrain_glm<-rbind(train_glm,backTrain_glm)
   dataTest_glm<-rbind(test_glm,backTest_glm)
-  glm_eval_2 <- glm(Presence~.,binomial(link = "logit"), data=dataTrain_glm)
-  eGLM[[i]] <- evaluate(p=dataTest_glm[ which(dataTest_glm$Presence==1),],a=dataTest_glm[which(dataTest_glm$Presence==0),], glm_eval_2)
+  glm_eval_2 <- glm(Presence~.,binomial(link = "logit"), data=dataTrain_glm)#this is our glm model trained on presence and absence points
+  eGLM[[i]] <- evaluate(p=dataTest_glm[ which(dataTest_glm$Presence==1),],a=dataTest_glm[which(dataTest_glm$Presence==0),], glm_eval_2)#use testing data (kfold==i) for model evaluation
+  eGLMtr[[i]] <- evaluate(p=dataTrain_glm[ which(dataTrain_glm$Presence==1),],a=dataTrain_glm[which(dataTrain_glm$Presence==0),], glm_eval_2)#use testing data (kfold==i) for model evaluation
   
   #check the AUC by plotting ROC values
   
@@ -90,22 +152,26 @@ for (i in 1:folds) {
 }
 summary(glm_eval_2)
 eGLM
-
+#?glm
 #testing
 y2=dataTest_glm$Presence
 
 prGLM2 <- predict(glm_eval_2,dataTest_glm)
 
-evaluate(all_data2$Presence, prGLM2)
+evaluate(all_data2$Presence, prGLM2)#con todo el dataset
 
 # calculate RMSE
-rmse_glm2=RMSE(y2,prGLM2)
-rmse_glm2 
+rmse_glm2=rmse(y2,prGLM2)
+rmse_glm2 # 1.707303
 
-#AUC
+#AUC test
 aucGLM <- sapply( eGLM, function(x){slot(x, 'auc')} )
 
-mean(aucGLM)
+mean(aucGLM)#0.8115357
+#AUC training
+aucGLMtr <- sapply( eGLMtr, function(x){slot(x, 'auc')} )
+
+mean(aucGLMtr)#0.8205
 
 Opt_GLM<-sapply( eGLM, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
 
@@ -117,144 +183,62 @@ Mean_OptGLM<- mean(Opt_GLM)
 
 trGLM<-plogis(Mean_OptGLM)
 
-trGLM
+trGLM#0.4721455
 
-prGLM <- predict(data, glm_d,type = "response")
+prGLM <- predict(datall, glm_eval_2,type = "response")
+
 par(mfrow=c(1,2))
 plot(prGLM, main='GLM, regression')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
 plot(prGLM > trGLM, main='presence/absence')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
-prGLM_pa=prGLM > trGLM
-writeRaster(x=prGLM_pa,filename = "generalized_pa.tif",overwrite=TRUE)
 
 
-##### 2- Maxnet  ##############################################################
+################### Neural Network ###########################################
+########### Create training (70%) and test (30%) dataset ##############
+set.seed(3)
+data_split=initial_split(all_data2,prop = 0.7)
+train=training(data_split) ## 70%
+test=testing(data_split)  ## 30%
+set.seed(5)
+# set parameters for cross validation 
+fitControl <- trainControl(## 5-fold CV
+  method = "repeatedcv",
+  number = 5,
+  ## repeated 5 times
+  repeats = 100)
 
-eMAX<-list()
-par(mfrow=c(2,3))
-for (i in 1:folds) {
-  train_maxnet <- presence[kfold_pres!= i,]
-  test_maxnet <- presence[kfold_pres == i,]
-  backTrain_maxnet<-absence[kfold_back!=i,]
-  backTest_maxnet<-absence[kfold_back==i,]
-  dataTrain_maxnet<-rbind(train_maxnet,backTrain_maxnet)
-  dataTest_maxnet<-rbind(test_maxnet,backTest_maxnet)
-  maxnet_eval_2 <- maxnet(dataTrain_maxnet$Presence,dataTrain_maxnet[,2:8])
-  eMAX[[i]] <- evaluate(p=dataTest_maxnet[ which(dataTest_maxnet$Presence==1),],
-                        a=dataTest_maxnet[which(dataTest_maxnet$Presence==0),], 
-                        maxnet_eval_2)#use testing data (kfold==i) for model evaluation
-  
-  #check the AUC by plotting ROC values
-  
-  plot(eMAX[[i]],'ROC')
-  
-}
-?maxnet
+## fit the model
 
-#inspect
+neuronal=train(Presence~ ., data=train,
+               trControl=fitControl,
+               method="nnet",
+               preProc=c("center","scale"),
+               verbose=FALSE)
 
-eMAX
+# testing  model results
+##### Neuronal - make predictions to the test dataset 
+pred_neuronal=predict(neuronal,newdata=test)
+y=test$Presence
+# calculate RMSE
+rmse_neuronal=RMSE(y,pred_neuronal)
+rmse_neuronal #0.373622
 
-aucMAX <- sapply( eMAX, function(x){slot(x, 'auc')} )
+# calculate AUC
 
-#calculate the mean values for comparison with other models
+eval_neuronal_tr <- evaluate(train[train$Presence==1,],train[train$Presence==0,], neuronal)
+eval_neuronal_tr #  AUC: 0.9424837 
 
-aucMAX
+eval_neuronal <- evaluate(test[test$Presence==1,],test[test$Presence==0,], neuronal)
+eval_neuronal #AUC: 0.8842915   
 
-mean(aucMAX)
-
-#Get maxTPR+TNR for the maxnet model
-
-Opt_MAX<-sapply( eMAX, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
-
-Opt_MAX
-
-Mean_OptMAX<-mean(Opt_MAX)
-
-Mean_OptMAX
-
-prMAX <- predict(data, maxnet_eval_2)
-par(mfrow=c(1,2))
-plot(prMAX, main='Maxent Prediction')
-plot(pol,add=TRUE,col="transparent",border='dark grey')
-plot(prMAX > Mean_OptMAX, main='presence/absence')
-plot(pol,add=TRUE,col="transparent",border='dark grey')
-prMax_pa=prMAX > Mean_OptMAX
-writeRaster(x=prMax_pa,filename = "maxnet_pa.tif",overwrite=TRUE)
-
-###################### 3 - RF ##################################################
-
-tuneRF(x=all_data2[,2:8],y=all_data2$Presence)
-
-rf.all=randomForest(as.factor(Presence)~.,mtry=7,ntree=500,data=all_data2)
-
-evaluate(all_data2$Presence,rf.all)#con todo el dataset
-#set number of folds to use
-
-folds=5
-
-#partiction presence and absence data according to folds using the kfold() function.
-
-kfold_pres <- kfold(presence, folds)
-kfold_back <- kfold(absence, folds)
-
-#create an empty list to hold our results (remember there will be five sets)
-set.seed(825)
-eRF<-list()
-par(mfrow=c(2,3))
-
-for (i in 1:folds) {
-  train_rf <- presence[kfold_pres!= i,]
-  test_rf <- presence[kfold_pres == i,]
-  backTrain_rf<-absence[kfold_back!=i,]
-  backTest_rf<-absence[kfold_back==i,]
-  dataTrain_rf<-rbind(train_rf,backTrain_rf)
-  dataTest_rf<-rbind(test_rf,backTest_rf)
-  RF_eval <- randomForest(as.factor(Presence)~.,mtry=7,ntree=5000, data=dataTrain_rf)
-  rf.pred <- predict(RF_eval, type="prob")[,2]#make prediction
-  eRF[[i]]<-evaluate(p = rf.pred[which(dataTrain_rf$Presence == "1")], 
-                     a = rf.pred[which(dataTrain_rf$Presence == "0")])
-  
-  #check the AUC by plotting ROC values
-  
-  plot(eRF[[i]],'ROC')
-  
-}
-summary(RF_eval$importance)
-RF_eval$importance
-
-#inspect
-
-eRF
-
-RF_eval
-
-aucRF <- sapply( eRF, function(x){slot(x, 'auc')} )
-
-#calculate the mean values for comparison with other models
-mean(aucRF) 
-
-#Get maxTPR+TNR for the Random Forest model
-
-Opt_RF<-sapply( eRF, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
-
-Opt_RF
-
-Mean_OptRF<-mean(Opt_RF)
-
-Mean_OptRF
-
-prRF <- predict(data, RF_eval)
-
+## Making spatial predictions
+neuronal_map=predict(datall,neuronal)
 
 par(mfrow=c(1,2))
-plot(prRF, main='Random Forest Prediction')
+plot(neuronal_map, main='Neuronal prediction')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
-tr <- threshold(eRF[[3]], 'spec_sens')
-tr
-plot(prRF > tr, main='presence/absence')
+
+plot(neuronal_map > 0.5970204   , main='presence/absence')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
-prRF_pa=prRF > tr
-writeRaster(x=prRF_pa,filename = "randomForest_pa2.tif",overwrite=TRUE)
-writeRaster(x=prRF,filename = "randomForest2.tif",overwrite=TRUE)
+
