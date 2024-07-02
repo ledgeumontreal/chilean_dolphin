@@ -1,4 +1,4 @@
-# Mapping the Future: Revealing Habitat Preferences and Pat-terns of the Endangered Chilean Dolphin in Seno Skyring, Patagonia
+# Mapping the Future: Revealing Habitat Preferences and Patterns of the Endangered Chilean Dolphin in Seno Skyring, Patagonia
 Liliana Perez<sup>1</sup>, Yenny Cuellar<sup>1</sup>, Jorge Gibbons<sup>2</sup>, Elias Pinilla Matamala<sup>3</sup>, Simon Demers<sup>1</sup>, Juan Capella<sup>4,5</sup>
 
 <sup>1</sup> Laboratoire de Géosimulation Environnementale (LEDGE), Département de Géographie, Université de Montréal, 1375 Avenue Thérèse-Lavoie-Roux, Montréal, QC, H2V 0B3, Canada
