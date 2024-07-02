@@ -35,7 +35,7 @@ The data is divided into two groups: (A) Input data and (B) Model outputs.
 - Kelp.
 - Aquaculture density.
 
-**Model outputs:** Maps showing the Chilean dolphin (_Cephalorhynchus eutropia_) distribution probability.
+**(B) Model outputs:** Maps showing the Chilean dolphin (_Cephalorhynchus eutropia_) distribution probability.
 - RF           &emsp;&emsp;&emsp;&emsp;&nbsp;&nbsp;&nbsp;&nbsp;Probability distribution map from the Random Forest model.
 - Generalized&emsp;&nbsp;Probability distribution map from the Generalized Linear Model.
 - Neuronal&emsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Probability distribution map from the Artificial Neuronal Network model. 
