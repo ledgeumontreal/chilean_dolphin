@@ -72,20 +72,8 @@ absence=subset(all_data2,Presence==0)
 rf_all <- randomForest(as.factor(Presence) ~.,mtry=6,ntree=5000, data=all_data2)
 rf_all$importance
 
-#MeanDecreaseGini
-# bathymetry                  35.200533
-# Fish.farms                  50.342678
-# kelp                         1.391421
-# oxygen_dissolved            26.225336
-# salinity                    48.145211
-# silice                      19.661473
-# temperature_seafloor        21.503170
-# rios                        28.005266
-# turbidity                   31.037959
-# dist_coast                 111.329990
-
 sorted_importance <- sort(rf_all$importance, decreasing = TRUE)
-sorted_importance
+
 #set number of folds to use
 folds=5
 
@@ -170,9 +158,8 @@ for (i in 1:folds) {
   plot(eGLM[[i]],'ROC')
   
 }
-summary(glm_eval_2)
-eGLM
-#?glm
+
+
 #testing
 y2=dataTest_glm$Presence
 
@@ -182,16 +169,16 @@ evaluate(all_data2$Presence, prGLM2)#con todo el dataset
 
 # calculate RMSE
 rmse_glm2=rmse(y2,prGLM2)
-rmse_glm2 # 1.707303
+rmse_glm2 
 
 #AUC test
 aucGLM <- sapply( eGLM, function(x){slot(x, 'auc')} )
 
-mean(aucGLM)#0.8115357
+mean(aucGLM)
 #AUC training
 aucGLMtr <- sapply( eGLMtr, function(x){slot(x, 'auc')} )
 
-mean(aucGLMtr)#0.8205
+mean(aucGLMtr)
 
 Opt_GLM<-sapply( eGLM, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
 
@@ -203,7 +190,7 @@ Mean_OptGLM<- mean(Opt_GLM)
 
 trGLM<-plogis(Mean_OptGLM)
 
-trGLM#0.4721455
+trGLM
 
 prGLM <- predict(datall, glm_eval_2,type = "response")
 
@@ -242,15 +229,15 @@ pred_neuronal=predict(neuronal,newdata=test)
 y=test$Presence
 # calculate RMSE
 rmse_neuronal=RMSE(y,pred_neuronal)
-rmse_neuronal #0.373622
+rmse_neuronal 
 
 # calculate AUC
 
 eval_neuronal_tr <- evaluate(train[train$Presence==1,],train[train$Presence==0,], neuronal)
-eval_neuronal_tr #  AUC: 0.9424837 
+eval_neuronal_tr  
 
 eval_neuronal <- evaluate(test[test$Presence==1,],test[test$Presence==0,], neuronal)
-eval_neuronal #AUC: 0.8842915   
+eval_neuronal  
 
 ## Making spatial predictions
 neuronal_map=predict(datall,neuronal)
