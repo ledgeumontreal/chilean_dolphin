@@ -1,4 +1,4 @@
-## Paper Mapping the Future: Revealing Habitat Preferences and Pat-terns of the 
+## Paper Mapping the Future: Revealing Habitat Preferences and Patterns of the 
 ##dangered Chilean Dolphin in Seno Skyring, Patagonia
 
 #### PERFORMING DIFFERENT METHODS TO PREDICT PRESENCE/ABSENCE DAUPHIN CHILIEN-
