@@ -7,11 +7,19 @@
 # Liliana Perez, Yenny Cuellar, Jorge Gibbons, Elias Pinilla Matamala, 
 # Simon Demers, Juan Capella
 
+## Paper Mapping the Future: Revealing Habitat Preferences and Pat-terns of the 
+##dangered Chilean Dolphin in Seno Skyring, Patagonia
+
+#### PERFORMING DIFFERENT METHODS TO PREDICT PRESENCE/ABSENCE DAUPHIN CHILIEN-
+####                            SKYRING
+
+# Liliana Perez, Yenny Cuellar, Jorge Gibbons, Elias Pinilla Matamala, 
+# Simon Demers, Juan Capella
 
 #setting libraries
 library(raster)
 library(sf)
-library(randomForest) 
+library(randomForest) ## Random Forestm method
 library(tibble)
 library(dismo)
 library(ModelMetrics)
@@ -29,7 +37,7 @@ temp_seafloor=raster("temperature_seafloor.tif")
 obs_csv=read.csv("observations.csv", sep = ";")
 rios=raster("rios_distance.tif")
 dist_coast=raster("distance_shoreline.tif")
-turbidity=raster("turb_final.tif")
+turbidity=raster("turbidity.tif")
 ## shp study area
 pol=read_sf("polygonSkyring.shp")
 coordinates(obs_csv)= ~ x + y ## TO SET x and y as coordinates
@@ -54,7 +62,7 @@ all_data2=all_data[ , !(names(all_data) %in% drops)] #to obtain just the fields 
 
 
 
-################################### Random Forest###############################
+################################### Random Forest ###############################
 set.seed(5)
 tuneRF(x=all_data2[,2:11],y=all_data2$Presence)
 
@@ -63,6 +71,18 @@ absence=subset(all_data2,Presence==0)
 
 rf_all <- randomForest(as.factor(Presence) ~.,mtry=6,ntree=5000, data=all_data2)
 rf_all$importance
+
+#MeanDecreaseGini
+# bathymetry                  35.200533
+# Fish.farms                  50.342678
+# kelp                         1.391421
+# oxygen_dissolved            26.225336
+# salinity                    48.145211
+# silice                      19.661473
+# temperature_seafloor        21.503170
+# rios                        28.005266
+# turbidity                   31.037959
+# dist_coast                 111.329990
 
 sorted_importance <- sort(rf_all$importance, decreasing = TRUE)
 sorted_importance
@@ -108,7 +128,7 @@ Opt_RF<-sapply( eRFtr, function(x){ x@t[which.max(x@TPR + x@TNR)] } )
 
 Mean_OptRF<-mean(Opt_RF)
 
-# calculate RMSE  when is treated as REGRESSION
+# calculate RMSE
 
 y=dataTest_rf$Presence
 rmse_rf=rmse(y,rf.predall)
@@ -120,7 +140,7 @@ pr_all <- predict(datall, RF_eval,type="response")
 
 ##PLOT
 par(mfrow=c(1,2))
-plot(pr_all, main='Random Forest regression')
+plot(pr_all, main='Random Forest')
 plot(pol, col="transparent",add=TRUE, border='dark grey')
 tr_all <- threshold(eRF[[3]], 'spec_sens') 
 
@@ -188,7 +208,7 @@ trGLM#0.4721455
 prGLM <- predict(datall, glm_eval_2,type = "response")
 
 par(mfrow=c(1,2))
-plot(prGLM, main='GLM, regression')
+plot(prGLM, main='GLM')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
 plot(prGLM > trGLM, main='presence/absence')
 plot(pol,add=TRUE,col="transparent",border='dark grey')
